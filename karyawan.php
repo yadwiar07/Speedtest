@@ -48,14 +48,31 @@ function upload_foto($file)
     return $new_name;
 }
 
+function has_regional_column($conn)
+{
+    $cek_kolom = mysqli_query($conn, "SHOW COLUMNS FROM karyawan LIKE 'regional'");
+    return $cek_kolom && mysqli_num_rows($cek_kolom) > 0;
+}
+
 $pesan_sukses = "";
 $pesan_error = "";
+$regional_ready = has_regional_column($conn);
+
+if (!$regional_ready) {
+    $alter = mysqli_query($conn, "ALTER TABLE karyawan ADD COLUMN regional VARCHAR(100) NOT NULL DEFAULT '' AFTER departemen");
+    if ($alter) {
+        $regional_ready = true;
+    } else {
+        $pesan_error = "Kolom regional belum tersedia di database. Silakan hubungi admin DB.";
+    }
+}
 
 # TAMBAH
 if (isset($_POST["simpan"])) {
     $nama = trim($_POST["nama"] ?? "");
     $jabatan = trim($_POST["jabatan"] ?? "");
     $departemen = trim($_POST["departemen"] ?? "");
+    $regional = trim($_POST["regional"] ?? "");
     $gaji_pokok = (float) ($_POST["gaji_pokok"] ?? 0);
     $tanggal_masuk = $_POST["tanggal_masuk"] ?? "";
 
@@ -67,21 +84,24 @@ if (isset($_POST["simpan"])) {
     $nomor_rekening = trim($_POST["nomor_rekening"] ?? "");
     $foto = upload_foto($_FILES["foto"] ?? null);
 
-    if ($nama === "" || $jabatan === "" || $departemen === "" || $tanggal_masuk === "" || $username === "" || $password_input === "") {
+    if ($nama === "" || $jabatan === "" || $departemen === "" || $regional === "" || $tanggal_masuk === "" || $username === "" || $password_input === "") {
         $pesan_error = "Data wajib belum lengkap.";
+    } elseif (!$regional_ready) {
+        $pesan_error = "Fitur regional belum aktif karena kolom regional belum tersedia.";
     } else {
         $stmt = $conn->prepare(
             "INSERT INTO karyawan
-            (nama,jabatan,departemen,gaji_pokok,tanggal_masuk,nama_bank,nomor_rekening,foto)
-            VALUES (?,?,?,?,?,?,?,?)"
+            (nama,jabatan,departemen,regional,gaji_pokok,tanggal_masuk,nama_bank,nomor_rekening,foto)
+            VALUES (?,?,?,?,?,?,?,?,?)"
         );
 
         if ($stmt) {
             $stmt->bind_param(
-                "sssdssss",
+                "ssssdssss",
                 $nama,
                 $jabatan,
                 $departemen,
+                $regional,
                 $gaji_pokok,
                 $tanggal_masuk,
                 $nama_bank,
@@ -118,27 +138,31 @@ if (isset($_POST["update"])) {
     $nama = trim($_POST["nama"] ?? "");
     $jabatan = trim($_POST["jabatan"] ?? "");
     $departemen = trim($_POST["departemen"] ?? "");
+    $regional = trim($_POST["regional"] ?? "");
     $gaji_pokok = (float) ($_POST["gaji_pokok"] ?? 0);
     $tanggal_masuk = $_POST["tanggal_masuk"] ?? "";
     $nama_bank = trim($_POST["nama_bank"] ?? "");
     $nomor_rekening = trim($_POST["nomor_rekening"] ?? "");
 
-    if ($id <= 0 || $nama === "" || $jabatan === "" || $departemen === "" || $tanggal_masuk === "") {
+    if ($id <= 0 || $nama === "" || $jabatan === "" || $departemen === "" || $regional === "" || $tanggal_masuk === "") {
         $pesan_error = "Data update tidak valid.";
+    } elseif (!$regional_ready) {
+        $pesan_error = "Fitur regional belum aktif karena kolom regional belum tersedia.";
     } else {
         $foto_baru = upload_foto($_FILES["foto"] ?? null);
         if ($foto_baru !== "default.png") {
             $stmt = $conn->prepare(
                 "UPDATE karyawan
-                SET nama=?, jabatan=?, departemen=?, gaji_pokok=?, tanggal_masuk=?, nama_bank=?, nomor_rekening=?, foto=?
+                SET nama=?, jabatan=?, departemen=?, regional=?, gaji_pokok=?, tanggal_masuk=?, nama_bank=?, nomor_rekening=?, foto=?
                 WHERE id=?"
             );
             if ($stmt) {
                 $stmt->bind_param(
-                    "sssdssssi",
+                    "ssssdssssi",
                     $nama,
                     $jabatan,
                     $departemen,
+                    $regional,
                     $gaji_pokok,
                     $tanggal_masuk,
                     $nama_bank,
@@ -157,15 +181,16 @@ if (isset($_POST["update"])) {
         } else {
             $stmt = $conn->prepare(
                 "UPDATE karyawan
-                SET nama=?, jabatan=?, departemen=?, gaji_pokok=?, tanggal_masuk=?, nama_bank=?, nomor_rekening=?
+                SET nama=?, jabatan=?, departemen=?, regional=?, gaji_pokok=?, tanggal_masuk=?, nama_bank=?, nomor_rekening=?
                 WHERE id=?"
             );
             if ($stmt) {
                 $stmt->bind_param(
-                    "sssdsssi",
+                    "ssssdsssi",
                     $nama,
                     $jabatan,
                     $departemen,
+                    $regional,
                     $gaji_pokok,
                     $tanggal_masuk,
                     $nama_bank,
@@ -296,6 +321,7 @@ $data = mysqli_query($conn, "SELECT * FROM karyawan ORDER BY id DESC");
 <th>Nama</th>
 <th>Jabatan</th>
 <th>Departemen</th>
+<th>Regional</th>
 <th>Gaji Pokok</th>
 <th>Tanggal Masuk</th>
 <th>Masa Kerja</th>
@@ -336,6 +362,12 @@ style="border-radius:50%;object-fit:cover">
 <td data-label="Departemen">
 <span class="badge badge-info">
 <?php echo e($d["departemen"]); ?>
+</span>
+</td>
+
+<td data-label="Regional">
+<span class="badge badge-secondary">
+<?php echo e($d["regional"] ?? "-"); ?>
 </span>
 </td>
 
@@ -473,6 +505,15 @@ $('#tabel').DataTable();
 </div>
 
 <div class="form-group">
+<label>Regional</label>
+<select name="regional" class="form-control" required>
+    <option value="">-- Pilih Regional --</option>
+    <option value="Bogor">Bogor</option>
+    <option value="Brebes">Brebes</option>
+</select>
+</div>
+
+<div class="form-group">
 <label>Gaji Pokok</label>
 <input type="number" name="gaji_pokok" class="form-control" required>
 </div>
@@ -569,6 +610,15 @@ value="<?php echo e($e["jabatan"]); ?>" required>
 <label>Departemen</label>
 <input type="text" name="departemen" class="form-control"
 value="<?php echo e($e["departemen"]); ?>" required>
+</div>
+
+<div class="form-group">
+<label>Regional</label>
+<select name="regional" class="form-control" required>
+    <option value="">-- Pilih Regional --</option>
+    <option value="Bogor" <?php echo (($e["regional"] ?? "") === "Bogor") ? "selected" : ""; ?>>Bogor</option>
+    <option value="Brebes" <?php echo (($e["regional"] ?? "") === "Brebes") ? "selected" : ""; ?>>Brebes</option>
+</select>
 </div>
 
 <div class="form-group">
